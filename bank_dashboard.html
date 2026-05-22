@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>銀行融資 Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --primary: #1a3c6e;
+    --primary-light: #2563a8;
+    --accent: #e8a020;
+    --accent2: #27ae60;
+    --bg: #f0f4f8;
+    --card: #ffffff;
+    --text: #1e293b;
+    --muted: #64748b;
+    --border: #e2e8f0;
+    --shadow: 0 2px 12px rgba(26,60,110,0.09);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI','Microsoft JhengHei',Arial,sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* HEADER */
+  .header { background: linear-gradient(135deg,var(--primary),var(--primary-light)); color:#fff; padding:22px 36px 18px; display:flex; align-items:center; justify-content:space-between; box-shadow:0 3px 16px rgba(26,60,110,.18); }
+  .header-left h1 { font-size:1.45rem; font-weight:700; letter-spacing:1px; }
+  .header-left p  { font-size:.82rem; opacity:.75; margin-top:3px; }
+  .header-right   { font-size:.82rem; opacity:.7; text-align:right; }
+
+  /* FILTER BAR */
+  .filter-bar { background:#fff; border-bottom:1px solid var(--border); padding:12px 36px; display:flex; align-items:center; gap:0; flex-wrap:wrap; box-shadow:0 1px 4px rgba(0,0,0,.04); position:sticky; top:0; z-index:100; }
+  .filter-group { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:4px 0; }
+  .filter-group + .filter-group { border-left:2px solid var(--border); margin-left:18px; padding-left:18px; }
+  .filter-bar label { font-size:.82rem; font-weight:700; color:var(--primary); white-space:nowrap; }
+  .bank-btns { display:flex; gap:8px; flex-wrap:wrap; }
+  .bank-btn { padding:6px 16px; border-radius:20px; border:2px solid var(--border); background:#f8fafc; color:var(--muted); font-size:.82rem; font-weight:600; cursor:pointer; transition:all .2s; }
+  .bank-btn:hover { border-color:var(--primary-light); color:var(--primary-light); }
+  .bank-btn.active { background:var(--primary); border-color:var(--primary); color:#fff; box-shadow:0 2px 8px rgba(26,60,110,.18); }
+  .bank-btn.borrower.active { background:#7c3aed; border-color:#7c3aed; }
+
+  /* MAIN */
+  .main { padding:28px 36px 40px; max-width:1400px; margin:0 auto; }
+  .section-title { font-size:.78rem; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:var(--muted); margin-bottom:14px; margin-top:28px; border-left:3px solid var(--accent); padding-left:10px; }
+
+  /* KPI */
+  .kpi-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:18px; margin-bottom:6px; }
+  .kpi-card { background:var(--card); border-radius:14px; padding:22px 24px; box-shadow:var(--shadow); border-top:4px solid var(--primary); transition:transform .2s; }
+  .kpi-card:hover { transform:translateY(-2px); }
+  .kpi-card.accent { border-top-color:var(--accent); }
+  .kpi-card.green  { border-top-color:var(--accent2); }
+  .kpi-card.blue2  { border-top-color:#7c3aed; }
+  .kpi-card .icon { width:40px; height:40px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.3rem; margin-bottom:12px; background:rgba(26,60,110,.08); }
+  .kpi-card.accent .icon { background:rgba(232,160,32,.12); }
+  .kpi-card.green  .icon { background:rgba(39,174,96,.12); }
+  .kpi-card.blue2  .icon { background:rgba(124,58,237,.12); }
+  .kpi-label { font-size:.78rem; color:var(--muted); font-weight:600; margin-bottom:6px; letter-spacing:.5px; }
+  .kpi-value { font-size:1.55rem; font-weight:800; color:var(--text); line-height:1.1; }
+  .kpi-sub   { font-size:.75rem; color:var(--muted); margin-top:6px; }
+
+  /* TABLE */
+  .table-wrapper { background:var(--card); border-radius:14px; box-shadow:var(--shadow); overflow:hidden; }
+  table { width:100%; border-collapse:collapse; font-size:.86rem; }
+  thead tr { background:var(--primary); color:#fff; }
+  thead th { padding:13px 16px; text-align:left; font-weight:600; letter-spacing:.3px; white-space:nowrap; }
+  tbody tr { border-bottom:1px solid var(--border); transition:background .15s; }
+  tbody tr:hover { background:#f0f6ff; }
+  tbody td { padding:13px 16px; vertical-align:top; }
+  .badge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:.75rem; font-weight:700; white-space:nowrap; }
+  .badge-blue   { background:rgba(37,99,168,.12);  color:var(--primary-light); }
+  .badge-orange { background:rgba(232,160,32,.15); color:#b07a10; }
+  .badge-green  { background:rgba(39,174,96,.13);  color:#1a7a44; }
+  .badge-purple { background:rgba(124,58,237,.12); color:#5b21b6; }
+  .amount { font-weight:700; color:var(--primary); }
+  .rate   { font-weight:600; color:#c0392b; }
+
+  /* CHARTS */
+  .charts-grid { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  @media(max-width:800px){ .charts-grid { grid-template-columns:1fr; } }
+  .chart-card { background:var(--card); border-radius:14px; padding:24px; box-shadow:var(--shadow); }
+  .chart-card h3 { font-size:.92rem; font-weight:700; color:var(--primary); margin-bottom:18px; display:flex; align-items:center; gap:8px; }
+  .chart-card h3::before { content:''; display:inline-block; width:4px; height:18px; background:var(--accent); border-radius:2px; }
+  .chart-container { position:relative; height:280px; }
+
+  /* GUARANTOR / COLLATERAL */
+  .guarantor-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:18px; }
+  .guarantor-card { background:var(--card); border-radius:14px; padding:20px 22px; box-shadow:var(--shadow); border-left:4px solid #7c3aed; }
+  .guarantor-card .bank-name { font-size:.8rem; color:var(--muted); margin-bottom:6px; font-weight:600; }
+  .guarantor-card .case-name { font-size:1rem; font-weight:700; color:var(--text); margin-bottom:10px; }
+  .guarantor-list { display:flex; flex-wrap:wrap; gap:8px; }
+  .guarantor-tag { background:rgba(124,58,237,.1); color:#5b21b6; padding:4px 14px; border-radius:20px; font-size:.82rem; font-weight:600; }
+  .no-guarantor { color:var(--muted); font-size:.85rem; font-style:italic; }
+  .collateral-card { background:var(--card); border-radius:14px; padding:20px 22px; box-shadow:var(--shadow); border-left:4px solid var(--accent2); }
+  .collateral-card .bank-name { font-size:.8rem; color:var(--muted); margin-bottom:4px; font-weight:600; }
+  .collateral-card .case-name { font-size:1rem; font-weight:700; color:var(--text); margin-bottom:8px; }
+  .collateral-text { font-size:.83rem; color:var(--muted); line-height:1.6; }
+
+  /* FOOTER SUMMARY */
+  .footer-summary { background:linear-gradient(135deg,var(--primary),var(--primary-light)); border-radius:16px; padding:28px 36px; display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:24px; margin-top:8px; box-shadow:0 4px 20px rgba(26,60,110,.2); }
+  .footer-stat { text-align:center; }
+  .footer-stat .label { font-size:.8rem; color:rgba(255,255,255,.7); letter-spacing:1px; margin-bottom:8px; font-weight:600; }
+  .footer-stat .value { font-size:2.2rem; font-weight:900; color:#fff; line-height:1; }
+  .footer-stat .unit  { font-size:.85rem; color:rgba(255,255,255,.75); margin-top:4px; }
+
+  /* USAGE BAR */
+  .usage-bar-wrap  { margin-top:8px; }
+  .usage-bar-label { display:flex; justify-content:space-between; font-size:.75rem; color:var(--muted); margin-bottom:4px; }
+  .usage-bar-bg    { background:var(--border); border-radius:6px; height:8px; overflow:hidden; }
+  .usage-bar-fill  { height:100%; border-radius:6px; background:linear-gradient(90deg,var(--accent2),#16a34a); transition:width .8s ease; }
+
+  /* ====== UPLOAD ZONE ====== */
+  .upload-zone { border:2.5px dashed var(--primary-light); border-radius:14px; padding:32px 24px; text-align:center; background:#f0f6ff; cursor:pointer; transition:all .25s; position:relative; }
+  .upload-zone:hover,.upload-zone.drag-over { background:#dbeafe; border-color:var(--primary); box-shadow:0 0 0 4px rgba(37,99,168,.1); }
+  .upload-zone input[type="file"] { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; }
+  .upload-icon  { font-size:2.4rem; margin-bottom:10px; }
+  .upload-title { font-size:1rem; font-weight:700; color:var(--primary); margin-bottom:4px; }
+  .upload-hint  { font-size:.82rem; color:var(--muted); }
+  .upload-status { margin-top:14px; padding:10px 18px; border-radius:10px; font-size:.85rem; font-weight:600; display:none; }
+  .upload-status.success { background:rgba(39,174,96,.12); color:#166534; display:block; }
+  .upload-status.error   { background:rgba(239,68,68,.12);  color:#991b1b; display:block; }
+  .upload-status.loading { background:rgba(37,99,168,.1);   color:var(--primary); display:block; }
+  .upload-file-info { display:flex; align-items:center; gap:10px; margin-top:10px; justify-content:center; font-size:.82rem; color:var(--muted); }
+  .upload-file-badge { background:var(--primary); color:#fff; padding:3px 12px; border-radius:20px; font-size:.78rem; font-weight:700; }
+
+  /* ====== COLUMN MAPPER PANEL ====== */
+  .col-mapper { background:var(--card); border-radius:14px; box-shadow:var(--shadow); padding:24px 28px; margin-top:18px; display:none; }
+  .col-mapper.visible { display:block; }
+  .col-mapper-title { font-size:1rem; font-weight:700; color:var(--primary); margin-bottom:6px; }
+  .col-mapper-sub   { font-size:.82rem; color:var(--muted); margin-bottom:20px; }
+  .col-mapper-grid  { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; margin-bottom:20px; }
+  .col-mapper-row   { display:flex; flex-direction:column; gap:4px; }
+  .col-mapper-label { font-size:.78rem; font-weight:700; color:var(--text); }
+  .col-mapper-label .req { color:#c0392b; margin-left:2px; }
+  .col-mapper-label .opt { color:var(--muted); font-weight:400; font-size:.72rem; margin-left:4px; }
+  .col-mapper-select {
+    width:100%; padding:8px 10px; border-radius:8px;
+    border:1.5px solid var(--border); background:#f8fafc;
+    font-size:.83rem; color:var(--text); cursor:pointer;
+    transition:border-color .2s;
+  }
+  .col-mapper-select:focus { outline:none; border-color:var(--primary-light); }
+  .col-mapper-select.matched  { border-color:var(--accent2); background:#f0fdf4; }
+  .col-mapper-select.required-err { border-color:#ef4444; background:#fff1f2; }
+  .col-mapper-actions { display:flex; gap:12px; align-items:center; }
+  .btn-primary { padding:10px 28px; border-radius:10px; border:none; background:var(--primary); color:#fff; font-size:.9rem; font-weight:700; cursor:pointer; transition:background .2s; }
+  .btn-primary:hover { background:var(--primary-light); }
+  .btn-secondary { padding:10px 20px; border-radius:10px; border:2px solid var(--border); background:#fff; color:var(--muted); font-size:.85rem; font-weight:600; cursor:pointer; }
+  .btn-secondary:hover { border-color:var(--muted); }
+  .mapper-notice { font-size:.8rem; color:var(--muted); }
+  .preview-tag { display:inline-block; padding:2px 8px; border-radius:6px; background:#eff6ff; color:var(--primary-light); font-size:.72rem; font-weight:600; margin-left:6px; border:1px solid #bfdbfe; }
+
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-left">
+    <h1>🏦 銀行融資 Dashboard</h1>
+    <p id="header-borrower">授信戶：東煒建設股份有限公司</p>
+  </div>
+  <div class="header-right">資料更新日期<br><strong id="today-date"></strong></div>
+</div>
+
+<!-- FILTER BAR (hidden until data loaded) -->
+<div class="filter-bar" id="filter-bar" style="display:none;">
+  <div class="filter-group">
+    <label>🏦 銀行：</label>
+    <div class="bank-btns" id="bank-btns">
+      <button class="bank-btn active" data-bank="all">全部</button>
+    </div>
+  </div>
+  <div class="filter-group">
+    <label>👤 授信戶：</label>
+    <div class="bank-btns" id="borrower-btns">
+      <button class="bank-btn borrower active" data-borrower="all">全部</button>
+    </div>
+  </div>
+</div>
+
+<!-- UPLOAD PANEL -->
+<div class="main" style="padding-bottom:0;">
+  <div class="section-title" style="margin-top:0;">📂 上傳融資資料</div>
+
+  <!-- Drop Zone -->
+  <div class="upload-zone" id="upload-zone">
+    <input type="file" id="file-input" accept=".xlsx,.xls" />
+    <div class="upload-icon">📊</div>
+    <div class="upload-title">點擊或拖曳 Excel 檔案至此</div>
+    <div class="upload-hint">支援 .xlsx / .xls　｜　上傳後可手動確認欄位對應</div>
+    <div class="upload-status" id="upload-status"></div>
+    <div class="upload-file-info" id="upload-file-info" style="display:none">
+      <span class="upload-file-badge">✓ 已讀取</span>
+      <span id="upload-filename"></span>
+    </div>
+  </div>
+
+  <!-- Column Mapper (shows after file read) -->
+  <div class="col-mapper" id="col-mapper">
+    <div class="col-mapper-title">⚙️ 欄位對應設定</div>
+    <div class="col-mapper-sub" id="mapper-detected-info">系統已自動偵測欄位，請確認下方對應是否正確，再點「確認載入」。</div>
+    <div class="col-mapper-grid" id="mapper-grid"></div>
+    <div class="col-mapper-actions">
+      <button class="btn-primary" id="mapper-confirm-btn">✅ 確認載入 Dashboard</button>
+      <button class="btn-secondary" id="mapper-cancel-btn">✕ 取消</button>
+      <span class="mapper-notice" id="mapper-notice"></span>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN DASHBOARD (hidden until data loaded) -->
+<div id="dashboard-content" style="display:none;">
+<div class="main">
+
+  <!-- KPI CARDS -->
+  <div class="section-title">核心指標</div>
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="icon">💰</div>
+      <div class="kpi-label">總授信額度</div>
+      <div class="kpi-value" id="kpi-total-credit">—</div>
+      <div class="kpi-sub"  id="kpi-total-credit-sub"></div>
+    </div>
+    <div class="kpi-card accent">
+      <div class="icon">📊</div>
+      <div class="kpi-label">剩餘可動撥餘額</div>
+      <div class="kpi-value" id="kpi-available">—</div>
+      <div class="kpi-sub"  id="kpi-available-sub"></div>
+      <div class="usage-bar-wrap">
+        <div class="usage-bar-label"><span>已動撥</span><span id="usage-pct">—</span></div>
+        <div class="usage-bar-bg"><div class="usage-bar-fill" id="usage-bar" style="width:0%"></div></div>
+      </div>
+    </div>
+    <div class="kpi-card green">
+      <div class="icon">📋</div>
+      <div class="kpi-label">額度種類數</div>
+      <div class="kpi-value" id="kpi-types">—</div>
+      <div class="kpi-sub"  id="kpi-types-sub"></div>
+    </div>
+    <div class="kpi-card blue2">
+      <div class="icon">🏛️</div>
+      <div class="kpi-label">往來銀行家數</div>
+      <div class="kpi-value" id="kpi-banks">—</div>
+      <div class="kpi-sub"  id="kpi-banks-sub"></div>
+    </div>
+  </div>
+
+  <!-- DETAIL TABLE -->
+  <div class="section-title">融資明細</div>
+  <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>序號</th><th>案件名稱</th><th>銀行</th><th>額度種類</th>
+          <th>授信額度</th><th>可動撥餘額</th><th>利率</th><th>授信期間</th><th>核貸日期</th>
+        </tr>
+      </thead>
+      <tbody id="detail-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- CHARTS -->
+  <div class="section-title">圖表分析</div>
+  <div class="charts-grid">
+    <div class="chart-card">
+      <h3>利率分布圖</h3>
+      <div class="chart-container"><canvas id="rateChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>授信期間甘特圖</h3>
+      <div class="chart-container"><canvas id="ganttChart"></canvas></div>
+    </div>
+  </div>
+  <div class="charts-grid" style="margin-top:22px;">
+    <div class="chart-card">
+      <h3>授信額度佔比</h3>
+      <div class="chart-container"><canvas id="pieChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>授信額度 vs 可動撥餘額</h3>
+      <div class="chart-container"><canvas id="usageChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- GUARANTOR -->
+  <div class="section-title">連帶保證人</div>
+  <div class="guarantor-grid" id="guarantor-grid"></div>
+
+  <!-- COLLATERAL -->
+  <div class="section-title">抵押品 / 擔保品</div>
+  <div class="guarantor-grid" id="collateral-grid"></div>
+
+  <!-- FOOTER SUMMARY -->
+  <div class="section-title">總計摘要</div>
+  <div class="footer-summary">
+    <div class="footer-stat">
+      <div class="label">總授信額度</div>
+      <div class="value" id="footer-total">—</div>
+      <div class="unit">新台幣（元）</div>
+    </div>
+    <div class="footer-stat">
+      <div class="label">剩餘可動撥餘額</div>
+      <div class="value" id="footer-avail">—</div>
+      <div class="unit">新台幣（元）</div>
+    </div>
+    <div class="footer-stat">
+      <div class="label">往來銀行家數</div>
+      <div class="value" id="footer-banks">—</div>
+      <div class="unit">家</div>
+    </div>
+    <div class="footer-stat">
+      <div class="label">融資案件數</div>
+      <div class="value" id="footer-cases">—</div>
+      <div class="unit">件</div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+</div><!-- /dashboard-content -->
+
+<script>
+// ============================================================
+// FIELD DEFINITIONS  (key, label, required, match-keywords)
+// ============================================================
+const FIELD_DEFS = [
+  { key:'id',               label:'序號',           required:false, kw:['序號','no','id','編號','序'] },
+  { key:'caseName',         label:'案件名稱',        required:false, kw:['案件名稱','案件','名稱','專案','project'] },
+  { key:'borrower',         label:'授信戶',          required:false, kw:['授信戶','借款人','戶名','客戶'] },
+  { key:'approvalDate',     label:'核貸日期',        required:false, kw:['核貸日期','核貸','日期','核准','撥款日','date'] },
+  { key:'bank',             label:'銀行',            required:true,  kw:['銀行','bank','金融機構','分行'] },
+  { key:'collateral',       label:'抵押品／擔保品',  required:false, kw:['抵押品','擔保品','抵押','擔保','品'] },
+  { key:'creditType',       label:'額度種類',        required:false, kw:['額度種類','種類','類型','貸款類型','type'] },
+  { key:'creditLimit',      label:'授信額度',        required:true,  kw:['授信額度','額度','貸款金額','核貸金額','金額'] },
+  { key:'rateText',         label:'利率或手續費',    required:false, kw:['利率','手續費','rate','費率','年利率','月利率'] },
+  { key:'periodText',       label:'期間',            required:false, kw:['期間','年限','月數','貸款期間','還款期限'] },
+  { key:'note',             label:'說明／備註',      required:false, kw:['說明','備註','note','保證人','remark','comments'] },
+  { key:'availableBalance', label:'可動撥餘額',      required:true,  kw:['可動撥餘額','可動撥','餘額','剩餘','available'] },
+];
+
+// ============================================================
+// DEFAULT DATA (built-in sample)
+// ============================================================
+const allData = [
+  { id:1, caseName:'台南案_TW152855', borrower:'東煒建設股份有限公司', approvalDate:'2021-04-23',
+    bank:'中國信託商業銀行', collateral:'台南市新市區新晶段64-1地號及152~157等共6筆建號，建物面積11,342.13坪',
+    creditType:'中期有擔', creditLimit:940000000, rateText:'企業換利(月)+1.05%（目前1.55%）',
+    rateValue:1.55, periodText:'60個月', periodMonths:60, note:null, availableBalance:0, guarantors:[] },
+  { id:2, caseName:'竹北案(第一銀行)', borrower:'東煒建設股份有限公司', approvalDate:'2025-03-07',
+    bank:'第一商業銀行 仁和分行', collateral:'新竹縣竹北市沿河街46號1~5棟全棟工業用不動產',
+    creditType:'長期擔保放款（非循環20年）', creditLimit:1700000000, rateText:'二年期定儲機動利率+0.805%（目前2.7%）',
+    rateValue:2.70, periodText:'20年', periodMonths:240, note:'連帶保證人：趙國祥、陳健盛。',
+    availableBalance:70000000, guarantors:['趙國祥','陳健盛'] },
+];
+
+let currentBank     = 'all';
+let currentBorrower = 'all';
+let rateChartInst, ganttChartInst, pieChartInst, usageChartInst;
+let pendingWb = null;   // workbook waiting for mapping confirmation
+let pendingHeaders = [];
+
+// ============================================================
+// HELPERS
+// ============================================================
+function fmtAmt(n){
+  if(n>=1e8) return (n/1e8).toFixed(2)+' 億';
+  if(n>=1e4) return (n/1e4).toFixed(0)+' 萬';
+  return n.toLocaleString();
+}
+function fmtFull(n){ return n.toLocaleString()+' 元'; }
+function addMonths(dateStr,months){ const d=new Date(dateStr); d.setMonth(d.getMonth()+months); return d; }
+function dateLabel(d){ return d.getFullYear()+'/'+String(d.getMonth()+1).padStart(2,'0'); }
+const badgeClass = t => t.includes('中期')?'badge-orange': t.includes('長期')?'badge-blue': t.includes('短期')?'badge-green':'badge-purple';
+function getFiltered(){
+  return allData.filter(d =>
+    (currentBank     === 'all' || d.bank     === currentBank) &&
+    (currentBorrower === 'all' || d.borrower === currentBorrower)
+  );
+}
+
+// ============================================================
+// RATE PARSER  — handles all formats
+// ============================================================
+function parseRate(rawVal, ws, cellAddr){
+  // Try to read cell format from workbook to detect percentage-formatted cells
+  if(ws && cellAddr){
+    const cell = ws[cellAddr];
+    if(cell){
+      // Number type — check if percentage format (z contains %)
+      if(cell.t === 'n'){
+        const fmt = (cell.z || '').toString();
+        if(fmt.includes('%')){
+          // Excel percentage: stored as decimal (0.0155 → 1.55%)
+          return parseFloat((cell.v * 100).toFixed(6));
+        }
+        // Plain number — decide by magnitude
+        const v = cell.v;
+        if(v > 0 && v < 0.5) return parseFloat((v*100).toFixed(6)); // likely decimal %
+        return v; // likely already in %
+      }
+    }
+  }
+
+  if(rawVal === null || rawVal === undefined) return 0;
+
+  // Number fallback (no cell format available)
+  if(typeof rawVal === 'number'){
+    if(rawVal > 0 && rawVal < 0.5) return parseFloat((rawVal*100).toFixed(6));
+    return rawVal;
+  }
+
+  const text = rawVal.toString().trim();
+  if(!text) return 0;
+
+  // "目前 X.XX%" — most specific
+  const mCurr = text.match(/目前\s*([\d.]+)\s*%/);
+  if(mCurr) return parseFloat(mCurr[1]);
+
+  // All "X.XX%" occurrences — take the last one
+  const allPct = [...text.matchAll(/([\d.]+)\s*%/g)];
+  if(allPct.length) return parseFloat(allPct[allPct.length-1][1]);
+
+  // Plain numeric string
+  const mPlain = text.replace(/,/g,'').match(/^([\d.]+)$/);
+  if(mPlain){
+    const n = parseFloat(mPlain[1]);
+    return (n>0 && n<0.5) ? parseFloat((n*100).toFixed(6)) : n;
+  }
+  return 0;
+}
+
+function parsePeriodMonths(text){
+  if(!text) return 12;
+  text = text.toString().trim();
+  const y = text.match(/(\d+)\s*年/);
+  const m = text.match(/(\d+)\s*個月/);
+  let months = 0;
+  if(y) months += parseInt(y[1])*12;
+  if(m) months += parseInt(m[1]);
+  return months || 12;
+}
+
+function parseGuarantors(note){
+  if(!note) return [];
+  const m = note.match(/連帶保證人[：:]\s*([^。\n]+)/);
+  if(!m) return [];
+  return m[1].split(/[、，,]/).map(s=>s.trim()).filter(Boolean);
+}
+
+function parseExcelDate(val){
+  if(!val) return null;
+  if(val instanceof Date) return val.toISOString().slice(0,10);
+  if(typeof val==='number'){
+    const d = new Date(Math.round((val-25569)*86400*1000));
+    return d.toISOString().slice(0,10);
+  }
+  if(typeof val==='string'){
+    const d = new Date(val);
+    if(!isNaN(d)) return d.toISOString().slice(0,10);
+  }
+  return null;
+}
+
+// ============================================================
+// FUZZY COLUMN MATCH
+// ============================================================
+function scoreHeader(header, keywords){
+  if(!header) return 0;
+  const h = header.toLowerCase();
+  let score = 0;
+  for(const kw of keywords){
+    const k = kw.toLowerCase();
+    if(h === k) score += 100;
+    else if(h.includes(k)) score += 50;
+    else if(k.length>=2 && h.includes(k.slice(0,2))) score += 15;
+  }
+  return score;
+}
+
+function autoMatchColumns(headers){
+  const mapping = {};
+  const usedCols = new Set();
+  // Sort fields: required first, then by keyword specificity
+  const sorted = [...FIELD_DEFS].sort((a,b)=>(b.required?1:0)-(a.required?1:0));
+  for(const def of sorted){
+    let bestIdx = -1, bestScore = 0;
+    headers.forEach((h, i)=>{
+      if(usedCols.has(i)) return;
+      const s = scoreHeader(h, def.kw);
+      if(s > bestScore){ bestScore=s; bestIdx=i; }
+    });
+    mapping[def.key] = bestScore >= 15 ? bestIdx : -1;
+    if(bestIdx >= 0) usedCols.add(bestIdx);
+  }
+  return mapping;
+}
+
+// ============================================================
+// COLUMN MAPPER UI
+// ============================================================
+function showColumnMapper(wb){
+  pendingWb = wb;
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
+  if(!rows.length){ showStatus('error','工作表為空，無法讀取'); return; }
+  const headers = rows[0].map(h => h ? h.toString().trim() : '');
+  pendingHeaders = headers;
+
+  document.getElementById('mapper-detected-info').textContent =
+    `偵測到工作表「${wb.SheetNames[0]}」，共 ${headers.length} 個欄位、${rows.length-1} 筆資料。請確認欄位對應後點「確認載入」。`;
+
+  const autoMap = autoMatchColumns(headers);
+  const grid = document.getElementById('mapper-grid');
+  grid.innerHTML = '';
+
+  const NONE = '__none__';
+
+  FIELD_DEFS.forEach(def => {
+    const row = document.createElement('div');
+    row.className = 'col-mapper-row';
+
+    const optLabel = def.required ? '<span class="req">*必填</span>' : '<span class="opt">選填</span>';
+    row.innerHTML = `<label class="col-mapper-label">${def.label}${optLabel}</label>`;
+
+    const sel = document.createElement('select');
+    sel.className = 'col-mapper-select';
+    sel.dataset.fieldKey = def.key;
+
+    // Add "(不使用)" option
+    const noneOpt = document.createElement('option');
+    noneOpt.value = NONE;
+    noneOpt.textContent = '—（不使用）';
+    sel.appendChild(noneOpt);
+
+    headers.forEach((h, i) => {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = `[欄${i+1}] ${h}`;
+      sel.appendChild(opt);
+    });
+
+    const matched = autoMap[def.key];
+    if(matched >= 0){
+      sel.value = matched;
+      sel.classList.add('matched');
+    }
+
+    sel.addEventListener('change', () => {
+      sel.classList.remove('matched','required-err');
+      if(sel.value !== NONE) sel.classList.add('matched');
+    });
+
+    row.appendChild(sel);
+    grid.appendChild(row);
+  });
+
+  document.getElementById('col-mapper').classList.add('visible');
+  document.getElementById('col-mapper').scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+function getMapperMapping(){
+  const result = {};
+  document.querySelectorAll('.col-mapper-select').forEach(sel => {
+    result[sel.dataset.fieldKey] = sel.value === '__none__' ? -1 : parseInt(sel.value);
+  });
+  return result;
+}
+
+function applyMapping(wb, colIdx){
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
+  const headers = rows[0];
+
+  // Validate required
+  const missing = FIELD_DEFS.filter(d => d.required && colIdx[d.key] < 0);
+  if(missing.length){
+    document.getElementById('mapper-notice').textContent = '⚠️ 必填欄位未對應：' + missing.map(d=>d.label).join('、');
+    // Highlight
+    document.querySelectorAll('.col-mapper-select').forEach(sel => {
+      const def = FIELD_DEFS.find(d=>d.key===sel.dataset.fieldKey);
+      if(def && def.required && colIdx[def.key] < 0) sel.classList.add('required-err');
+    });
+    return null;
+  }
+
+  const parsed = [];
+  for(let i=1; i<rows.length; i++){
+    const row = rows[i];
+    const bankVal = colIdx.bank >= 0 ? row[colIdx.bank] : null;
+    if(!bankVal) continue;
+
+    const creditLimit = Number(colIdx.creditLimit >= 0 ? row[colIdx.creditLimit] : 0) || 0;
+    const availableBalance = Number(colIdx.availableBalance >= 0 ? row[colIdx.availableBalance] : 0) || 0;
+    const note = colIdx.note >= 0 ? row[colIdx.note] : null;
+    const approvalDateRaw = colIdx.approvalDate >= 0 ? row[colIdx.approvalDate] : null;
+
+    // Rate — pass cell reference for format detection
+    let rateRaw = colIdx.rateText >= 0 ? row[colIdx.rateText] : null;
+    let cellAddr = null;
+    if(colIdx.rateText >= 0){
+      cellAddr = XLSX.utils.encode_cell({ r: i, c: colIdx.rateText });
+    }
+    const rateValue = parseRate(rateRaw, ws, cellAddr);
+    const rateText  = rateRaw ? rateRaw.toString().trim() : '';
+
+    const periodRaw = colIdx.periodText >= 0 ? row[colIdx.periodText] : '12個月';
+    const periodText = (periodRaw || '12個月').toString().trim();
+
+    parsed.push({
+      id:          colIdx.id >= 0 ? (row[colIdx.id] || i) : i,
+      caseName:    colIdx.caseName >= 0 ? (row[colIdx.caseName] || `案件${i}`) : `案件${i}`,
+      borrower:    colIdx.borrower >= 0 ? (row[colIdx.borrower] || '') : '',
+      approvalDate: parseExcelDate(approvalDateRaw) || new Date().toISOString().slice(0,10),
+      bank:        bankVal.toString().trim(),
+      collateral:  colIdx.collateral >= 0 ? (row[colIdx.collateral] || '—') : '—',
+      creditType:  colIdx.creditType >= 0 ? (row[colIdx.creditType] || '—') : '—',
+      creditLimit,
+      rateText:    rateText.replace(/\n/g,' '),
+      rateValue,
+      periodText,
+      periodMonths: parsePeriodMonths(periodText),
+      note:        note ? note.toString().trim() : null,
+      availableBalance,
+      guarantors:  parseGuarantors(note ? note.toString() : null),
+    });
+  }
+  return parsed;
+}
+
+// ============================================================
+// FILE HANDLING
+// ============================================================
+function showStatus(type, msg){
+  const el = document.getElementById('upload-status');
+  el.className = 'upload-status '+type;
+  el.textContent = msg;
+}
+
+function handleFile(file){
+  showStatus('loading','⏳ 正在讀取檔案…');
+  document.getElementById('upload-file-info').style.display = 'none';
+  document.getElementById('col-mapper').classList.remove('visible');
+  document.getElementById('mapper-notice').textContent = '';
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type:'array', cellDates:true });
+      showStatus('success', `✅ 已讀取「${file.name}」，請在下方確認欄位對應。`);
+      document.getElementById('upload-filename').textContent = file.name;
+      document.getElementById('upload-file-info').style.display = 'flex';
+      showColumnMapper(wb);
+    } catch(err){
+      showStatus('error','❌ 讀取失敗：'+err.message);
+    }
+  };
+  reader.onerror = () => showStatus('error','❌ 檔案讀取失敗，請重試');
+  reader.readAsArrayBuffer(file);
+}
+
+// Upload zone events
+const uploadZone = document.getElementById('upload-zone');
+const fileInput  = document.getElementById('file-input');
+fileInput.addEventListener('change', e => { if(e.target.files[0]) handleFile(e.target.files[0]); });
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault(); uploadZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0]; if(f) handleFile(f);
+});
+
+// Confirm mapping button
+document.getElementById('mapper-confirm-btn').addEventListener('click', () => {
+  if(!pendingWb){ return; }
+  const colIdx = getMapperMapping();
+  const parsed = applyMapping(pendingWb, colIdx);
+  if(!parsed) return;
+  if(parsed.length === 0){ document.getElementById('mapper-notice').textContent = '⚠️ 未解析到任何資料列，請確認欄位對應'; return; }
+
+  allData.length = 0;
+  parsed.forEach(d => allData.push(d));
+  rebuildBankButtons();
+
+  // Update header borrower
+  const borrowers = [...new Set(parsed.map(d=>d.borrower).filter(Boolean))];
+  if(borrowers.length) document.getElementById('header-borrower').textContent = '授信戶：'+borrowers.join('、');
+
+  render();
+  document.getElementById('col-mapper').classList.remove('visible');
+  showStatus('success', `✅ 成功載入 ${parsed.length} 筆融資資料！`);
+  // Show filter bar & dashboard
+  document.getElementById('filter-bar').style.display = 'flex';
+  document.getElementById('dashboard-content').style.display = 'block';
+  document.getElementById('dashboard-content').scrollIntoView({ behavior:'smooth' });
+});
+
+// Cancel mapping
+document.getElementById('mapper-cancel-btn').addEventListener('click', () => {
+  document.getElementById('col-mapper').classList.remove('visible');
+  pendingWb = null;
+});
+
+// ============================================================
+// REBUILD FILTERS (銀行 + 授信戶)
+// ============================================================
+function rebuildBankButtons(){
+  // 銀行
+  const banks = [...new Set(allData.map(d=>d.bank))];
+  const bankContainer = document.getElementById('bank-btns');
+  bankContainer.innerHTML = `<button class="bank-btn active" data-bank="all">全部</button>`;
+  banks.forEach(b => {
+    const btn = document.createElement('button');
+    btn.className = 'bank-btn'; btn.dataset.bank = b; btn.textContent = b;
+    bankContainer.appendChild(btn);
+  });
+  currentBank = 'all';
+
+  // 授信戶
+  const borrowers = [...new Set(allData.map(d=>d.borrower).filter(Boolean))];
+  const borrowerContainer = document.getElementById('borrower-btns');
+  borrowerContainer.innerHTML = `<button class="bank-btn borrower active" data-borrower="all">全部</button>`;
+  borrowers.forEach(b => {
+    const btn = document.createElement('button');
+    btn.className = 'bank-btn borrower'; btn.dataset.borrower = b; btn.textContent = b;
+    borrowerContainer.appendChild(btn);
+  });
+  currentBorrower = 'all';
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+function renderKPIs(data){
+  const totalCredit = data.reduce((s,d)=>s+d.creditLimit,0);
+  const totalAvail  = data.reduce((s,d)=>s+d.availableBalance,0);
+  const usedPct = totalCredit ? Math.round((totalCredit-totalAvail)/totalCredit*100) : 0;
+  const types = [...new Set(data.map(d=>d.creditType))];
+  const banks = [...new Set(data.map(d=>d.bank))];
+
+  document.getElementById('kpi-total-credit').textContent = fmtAmt(totalCredit);
+  document.getElementById('kpi-total-credit-sub').textContent = fmtFull(totalCredit);
+  document.getElementById('kpi-available').textContent = fmtAmt(totalAvail);
+  document.getElementById('kpi-available-sub').textContent = fmtFull(totalAvail);
+  document.getElementById('usage-pct').textContent = usedPct+'%';
+  document.getElementById('usage-bar').style.width = usedPct+'%';
+  document.getElementById('kpi-types').textContent = types.length+' 種';
+  document.getElementById('kpi-types-sub').textContent = types.join('、');
+  document.getElementById('kpi-banks').textContent = banks.length+' 家';
+  document.getElementById('kpi-banks-sub').textContent = banks.join(' / ');
+}
+
+function renderTable(data){
+  const tbody = document.getElementById('detail-tbody');
+  tbody.innerHTML = '';
+  data.forEach(d => {
+    const endDate = addMonths(d.approvalDate, d.periodMonths);
+    const rateDisplay = d.rateValue > 0 ? d.rateValue.toFixed(2)+'%' : '—';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${d.id}</td>
+      <td><strong>${d.caseName}</strong></td>
+      <td>${d.bank}</td>
+      <td><span class="badge ${badgeClass(d.creditType)}">${d.creditType}</span></td>
+      <td class="amount">${fmtAmt(d.creditLimit)}</td>
+      <td class="amount">${fmtAmt(d.availableBalance)}</td>
+      <td class="rate" title="${d.rateText}">${rateDisplay}</td>
+      <td>${d.periodText}<br><small style="color:var(--muted)">${d.approvalDate} ～ ${endDate.toISOString().slice(0,10)}</small></td>
+      <td>${d.approvalDate}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderGuarantors(data){
+  const grid = document.getElementById('guarantor-grid');
+  grid.innerHTML = '';
+  data.forEach(d => {
+    const card = document.createElement('div'); card.className = 'guarantor-card';
+    const content = d.guarantors.length
+      ? d.guarantors.map(g=>`<span class="guarantor-tag">👤 ${g}</span>`).join('')
+      : '<span class="no-guarantor">無連帶保證人</span>';
+    card.innerHTML = `<div class="bank-name">🏦 ${d.bank}</div><div class="case-name">${d.caseName}</div><div class="guarantor-list">${content}</div>`;
+    grid.appendChild(card);
+  });
+}
+
+function renderCollateral(data){
+  const grid = document.getElementById('collateral-grid');
+  grid.innerHTML = '';
+  data.forEach(d => {
+    const card = document.createElement('div'); card.className = 'collateral-card';
+    card.innerHTML = `<div class="bank-name">🏦 ${d.bank}</div><div class="case-name">${d.caseName}</div><div class="collateral-text">📍 ${d.collateral}</div>`;
+    grid.appendChild(card);
+  });
+}
+
+function renderFooter(data){
+  const totalCredit = data.reduce((s,d)=>s+d.creditLimit,0);
+  const totalAvail  = data.reduce((s,d)=>s+d.availableBalance,0);
+  const banks = [...new Set(data.map(d=>d.bank))];
+  document.getElementById('footer-total').textContent = fmtAmt(totalCredit);
+  document.getElementById('footer-avail').textContent = fmtAmt(totalAvail);
+  document.getElementById('footer-banks').textContent = banks.length;
+  document.getElementById('footer-cases').textContent = data.length;
+}
+
+// ============================================================
+// CHARTS
+// ============================================================
+const COLORS = ['#1a3c6e','#2563a8','#e8a020','#27ae60','#7c3aed','#ef4444','#0891b2','#d97706'];
+
+function renderRateChart(data){
+  const ctx = document.getElementById('rateChart').getContext('2d');
+  if(rateChartInst) rateChartInst.destroy();
+  const validData = data.filter(d=>d.rateValue>0);
+  rateChartInst = new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels: validData.map(d=>d.caseName),
+      datasets:[{ label:'利率(%)', data:validData.map(d=>d.rateValue),
+        backgroundColor: validData.map((_,i)=>COLORS[i%COLORS.length]+'cc'),
+        borderColor: validData.map((_,i)=>COLORS[i%COLORS.length]),
+        borderWidth:2, borderRadius:8, borderSkipped:false }]
+    },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false},
+        tooltip:{ callbacks:{
+          label: ctx => ` 利率：${ctx.parsed.y.toFixed(2)}%`,
+          afterLabel: ctx => { const d=validData[ctx.dataIndex]; return d.rateText ? ` 條件：${d.rateText.slice(0,40)}` : ''; }
+        }}},
+      scales:{
+        y:{ beginAtZero:true, ticks:{callback:v=>v+'%'}, grid:{color:'#f0f4f8'} },
+        x:{ grid:{display:false} }
+      }
+    }
+  });
+}
+
+function renderGanttChart(data){
+  const ctx = document.getElementById('ganttChart').getContext('2d');
+  if(ganttChartInst) ganttChartInst.destroy();
+  const minDate = new Date(Math.min(...data.map(d=>new Date(d.approvalDate))));
+  const maxDate = new Date(Math.max(...data.map(d=>addMonths(d.approvalDate,d.periodMonths))));
+  const pad = (maxDate-minDate)*0.05;
+  const chartMin = minDate.getTime()-pad;
+  const chartMax = maxDate.getTime()+pad;
+  const starts = data.map(d=>new Date(d.approvalDate).getTime());
+  const ends   = data.map(d=>addMonths(d.approvalDate,d.periodMonths).getTime());
+  ganttChartInst = new Chart(ctx,{
+    type:'bar',
+    data:{ labels:data.map(d=>d.caseName), datasets:[
+      { label:'偏移', data:starts.map(s=>s-chartMin), backgroundColor:'transparent', borderWidth:0 },
+      { label:'授信期間', data:ends.map((e,i)=>e-starts[i]),
+        backgroundColor:data.map((_,i)=>COLORS[i%COLORS.length]+'cc'),
+        borderColor:data.map((_,i)=>COLORS[i%COLORS.length]),
+        borderWidth:2, borderRadius:6, borderSkipped:false }
+    ]},
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false},
+        tooltip:{ filter:item=>item.datasetIndex===1,
+          callbacks:{ label:ctx=>{ const d=data[ctx.dataIndex]; const e=addMonths(d.approvalDate,d.periodMonths);
+            return [` 開始：${d.approvalDate}`, ` 結束：${e.toISOString().slice(0,10)}`, ` 期間：${d.periodText}`]; }}}},
+      scales:{
+        x:{ stacked:true, min:0, max:chartMax-chartMin,
+          ticks:{ callback:v=>{ const d=new Date(chartMin+v); return d.getFullYear()+'/'+String(d.getMonth()+1).padStart(2,'0'); }, maxTicksLimit:8 },
+          grid:{color:'#f0f4f8'} },
+        y:{ stacked:true, grid:{display:false} }
+      }
+    }
+  });
+}
+
+function renderPieChart(data){
+  const ctx = document.getElementById('pieChart').getContext('2d');
+  if(pieChartInst) pieChartInst.destroy();
+  const total = data.reduce((s,d)=>s+d.creditLimit,0);
+  pieChartInst = new Chart(ctx,{
+    type:'doughnut',
+    data:{ labels:data.map(d=>d.caseName), datasets:[{
+      data:data.map(d=>d.creditLimit),
+      backgroundColor:data.map((_,i)=>COLORS[i%COLORS.length]+'cc'),
+      borderColor:data.map((_,i)=>COLORS[i%COLORS.length]),
+      borderWidth:2, hoverOffset:8 }]},
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{position:'bottom',labels:{padding:16,font:{size:12}}},
+        tooltip:{callbacks:{label:ctx=>` ${ctx.label}：${fmtAmt(ctx.parsed)}（${(ctx.parsed/total*100).toFixed(1)}%）`}}}}
+  });
+}
+
+function renderUsageChart(data){
+  const ctx = document.getElementById('usageChart').getContext('2d');
+  if(usageChartInst) usageChartInst.destroy();
+  usageChartInst = new Chart(ctx,{
+    type:'bar',
+    data:{ labels:data.map(d=>d.caseName), datasets:[
+      { label:'授信額度',   data:data.map(d=>d.creditLimit),      backgroundColor:'#1a3c6ecc', borderColor:'#1a3c6e', borderWidth:2, borderRadius:6, borderSkipped:false },
+      { label:'可動撥餘額', data:data.map(d=>d.availableBalance), backgroundColor:'#27ae60cc', borderColor:'#27ae60', borderWidth:2, borderRadius:6, borderSkipped:false }
+    ]},
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{position:'bottom'}, tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}：${fmtAmt(ctx.parsed.y)}`}}},
+      scales:{ y:{ticks:{callback:v=>fmtAmt(v)},grid:{color:'#f0f4f8'}}, x:{grid:{display:false}} }
+    }
+  });
+}
+
+function render(){
+  const data = getFiltered();
+  renderKPIs(data); renderTable(data); renderGuarantors(data); renderCollateral(data); renderFooter(data);
+  renderRateChart(data); renderGanttChart(data); renderPieChart(data); renderUsageChart(data);
+}
+
+// 銀行 filter
+document.getElementById('bank-btns').addEventListener('click', e => {
+  const btn = e.target.closest('.bank-btn'); if(!btn) return;
+  document.querySelectorAll('#bank-btns .bank-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); currentBank = btn.dataset.bank; render();
+});
+
+// 授信戶 filter
+document.getElementById('borrower-btns').addEventListener('click', e => {
+  const btn = e.target.closest('.bank-btn'); if(!btn) return;
+  document.querySelectorAll('#borrower-btns .bank-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); currentBorrower = btn.dataset.borrower; render();
+});
+
+// ============================================================
+// INIT
+// ============================================================
+document.getElementById('today-date').textContent = new Date().toLocaleDateString('zh-TW',{year:'numeric',month:'2-digit',day:'2-digit'});
+// Dashboard hidden on load — will show after file is confirmed
+</script>
+</body>
+</html>
